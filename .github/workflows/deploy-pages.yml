@@ -1,0 +1,59 @@
+# Deploy static build to GitHub Pages. Supabase URL + anon key come from
+# repository Secrets — never commit a real .env file.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: ["main", "master"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Compute Vite base path
+        id: base
+        run: |
+          NAME="${{ github.event.repository.name }}"
+          if [[ "$NAME" == *.github.io ]]; then
+            echo "path=/" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=/$NAME/" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install and build
+        run: npm ci && npm run build
+        env:
+          BASE_PATH: ${{ steps.base.outputs.path }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
