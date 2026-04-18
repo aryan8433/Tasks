@@ -6,12 +6,13 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import type { Folder, Task } from "./types";
 import { getDefaultFolderId } from "./types";
-import { todayISODate } from "./dateUtils";
-import { sortTasksByPriority } from "./taskSort";
+import { taskDueAtMs, todayISODate } from "./dateUtils";
+import { sortTasksOverdueFirst } from "./taskSort";
 import {
   deleteFolderRemote,
   deleteTaskRemote,
@@ -193,6 +194,12 @@ interface AppContextValue {
   state: State;
   selectedFolder: Folder | undefined;
   tasksInFolder: Task[];
+  /** Folder ids (real folders) that contain at least one overdue task. */
+  overdueFolderIds: Set<string>;
+  /** True if the given task is overdue right now (excludes default folder). */
+  isOverdue: (task: Task) => boolean;
+  /** True if the given folder is the default "Today's tasks" folder. */
+  isDefaultFolder: (folderId: string) => boolean;
   refresh: () => Promise<void>;
   selectFolder: (folderId: string) => void;
   addFolder: (title: string, description: string) => Promise<void>;
@@ -301,12 +308,56 @@ export function AppProvider({
     (f) => f.id === state.selectedFolderId
   );
 
+  const defaultFolderId = useMemo(
+    () => getDefaultFolderId(state.folders),
+    [state.folders]
+  );
+
+  const isDefaultFolder = useCallback(
+    (folderId: string) => Boolean(defaultFolderId && folderId === defaultFolderId),
+    [defaultFolderId]
+  );
+
+  // "Wall-clock tick" that advances every 30 s so any selector that
+  // depends on the current time (overdue, due-tasks, blue dots, ordering)
+  // re-evaluates as time passes — even if no task data changed.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  /** A task is overdue when:
+   *    - it is not completed
+   *    - it is not in the default "Today's tasks" folder (those roll forward
+   *      and have no real due time)
+   *    - it has a due date and current time > its due_at */
+  const isOverdue = useCallback(
+    (task: Task): boolean => {
+      if (task.completed) return false;
+      if (isDefaultFolder(task.folderId)) return false;
+      const dueAt = taskDueAtMs(task);
+      if (dueAt === null) return false;
+      return nowTick > dueAt;
+    },
+    [isDefaultFolder, nowTick]
+  );
+
   const tasksInFolder = useMemo(() => {
     const list = state.tasks.filter(
       (t) => t.folderId === state.selectedFolderId
     );
-    return sortTasksByPriority(list);
-  }, [state.tasks, state.selectedFolderId]);
+    return sortTasksOverdueFirst(list, isOverdue);
+  }, [state.tasks, state.selectedFolderId, isOverdue]);
+
+  /** Folders that contain at least one overdue task. */
+  const overdueFolderIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const t of state.tasks) {
+      if (isOverdue(t)) ids.add(t.folderId);
+    }
+    return ids;
+  }, [state.tasks, isOverdue]);
 
   const selectFolder = useCallback((folderId: string) => {
     dispatch({ type: "SELECT_FOLDER", folderId });
@@ -386,14 +437,17 @@ export function AppProvider({
       const defId = getDefaultFolderId(stateRef.current.folders);
       const today = todayISODate();
       const inDefault = Boolean(defId && folderId === defId);
+      // Spec: time cannot be set without a date.
+      const finalDueDate = inDefault ? today : dueDate;
+      const finalDueTime = inDefault ? null : finalDueDate ? dueTime : null;
       const draft: Omit<Task, "id"> = {
         folderId,
         title: title.trim(),
         description: description.trim(),
         completed: false,
         priority,
-        dueDate: inDefault ? today : dueDate,
-        dueTime: inDefault ? null : dueTime,
+        dueDate: finalDueDate,
+        dueTime: finalDueTime,
         todayDate: inDefault ? today : null,
       };
       dispatch({ type: "SET_ERROR", message: null });
@@ -423,13 +477,16 @@ export function AppProvider({
       if (!task) return;
       const defId = getDefaultFolderId(stateRef.current.folders);
       const inDefault = Boolean(defId && task.folderId === defId);
+      const finalDueDate = inDefault ? task.dueDate : dueDate;
+      // Spec: time cannot be set without a date.
+      const finalDueTime = inDefault ? null : finalDueDate ? dueTime : null;
       const next: Task = {
         ...task,
         title: title.trim(),
         description: description.trim(),
         priority,
-        dueDate: inDefault ? task.dueDate : dueDate,
-        dueTime: inDefault ? null : dueTime,
+        dueDate: finalDueDate,
+        dueTime: finalDueTime,
         todayDate: inDefault ? task.todayDate : null,
       };
       dispatch({ type: "SET_ERROR", message: null });
@@ -479,6 +536,9 @@ export function AppProvider({
       state,
       selectedFolder,
       tasksInFolder,
+      overdueFolderIds,
+      isOverdue,
+      isDefaultFolder,
       refresh: loadAndHydrate,
       selectFolder,
       addFolder,
@@ -493,6 +553,9 @@ export function AppProvider({
       state,
       selectedFolder,
       tasksInFolder,
+      overdueFolderIds,
+      isOverdue,
+      isDefaultFolder,
       loadAndHydrate,
       selectFolder,
       addFolder,
@@ -511,8 +574,24 @@ export function AppProvider({
 export function useApp() {
   const ctx = useContext(AppCtx);
   if (!ctx) throw new Error("useApp outside AppProvider");
-  const { state, selectedFolder, tasksInFolder, refresh } = ctx;
-  return { state, selectedFolder, tasksInFolder, refresh };
+  const {
+    state,
+    selectedFolder,
+    tasksInFolder,
+    overdueFolderIds,
+    isOverdue,
+    isDefaultFolder,
+    refresh,
+  } = ctx;
+  return {
+    state,
+    selectedFolder,
+    tasksInFolder,
+    overdueFolderIds,
+    isOverdue,
+    isDefaultFolder,
+    refresh,
+  };
 }
 
 export function useAppActions() {

@@ -12,6 +12,9 @@
   --priority-high: #ff7b7b;
   --priority-medium: #e6c07b;
   --priority-low: #98d49a;
+  --overdue: #b3261e;
+  --overdue-bg: rgba(179, 38, 30, 0.18);
+  --dot: #2ea7ff;
   --radius: 10px;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
@@ -540,6 +543,32 @@ button {
 .priority-pill.low {
   background: rgba(152, 212, 154, 0.18);
   color: var(--priority-low);
+}
+
+.priority-pill.overdue {
+  background: var(--overdue-bg);
+  color: #ff8a82;
+  border: 1px solid rgba(179, 38, 30, 0.55);
+}
+
+.task-row.overdue {
+  border-color: rgba(179, 38, 30, 0.55);
+  background: linear-gradient(
+    to right,
+    rgba(179, 38, 30, 0.08),
+    var(--surface) 35%
+  );
+}
+
+.folder-dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: var(--dot);
+  flex-shrink: 0;
+  margin-left: 0.4rem;
+  box-shadow: 0 0 0 2px rgba(46, 167, 255, 0.18);
 }
 
 .task-meta {

@@ -11,8 +11,16 @@ export function priorityRank(p: Priority | null): number {
   return priorityOrder[p] ?? 3;
 }
 
-export function sortTasksByPriority(tasks: Task[]): Task[] {
+/** Sorts tasks with overdue items first, then by priority (high → low →
+ *  none), then alphabetically by title. */
+export function sortTasksOverdueFirst(
+  tasks: Task[],
+  isOverdue: (t: Task) => boolean
+): Task[] {
   return [...tasks].sort((a, b) => {
+    const ao = isOverdue(a);
+    const bo = isOverdue(b);
+    if (ao !== bo) return ao ? -1 : 1;
     const pr = priorityRank(a.priority) - priorityRank(b.priority);
     if (pr !== 0) return pr;
     return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });

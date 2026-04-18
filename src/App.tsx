@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Folder, Task } from "./types";
 import { useAuth } from "./auth/AuthContext";
 import { useApp, useAppActions } from "./store";
+import { useTaskNotifications } from "./notifications";
 import ConfirmDialog from "./components/ConfirmDialog";
 import FolderContextMenu from "./components/FolderContextMenu";
 import FolderModal from "./components/FolderModal";
@@ -11,7 +12,15 @@ import TaskRow from "./components/TaskRow";
 
 export default function App() {
   const { signOut } = useAuth();
-  const { state, selectedFolder, tasksInFolder, refresh } = useApp();
+  const {
+    state,
+    selectedFolder,
+    tasksInFolder,
+    overdueFolderIds,
+    isOverdue,
+    isDefaultFolder,
+    refresh,
+  } = useApp();
   const {
     selectFolder,
     addFolder,
@@ -22,6 +31,9 @@ export default function App() {
     toggleTask,
     deleteTask,
   } = useAppActions();
+
+  // Plays a sound when a task crosses its due_at while the tab is open.
+  useTaskNotifications(state.tasks, { isInDefaultFolder: isDefaultFolder });
 
   const [folderModalMode, setFolderModalMode] = useState<"create" | "edit" | null>(
     null
@@ -164,30 +176,40 @@ export default function App() {
           + New folder
         </button>
         <ul className="folder-list">
-          {state.folders.map((f) => (
-            <li key={f.id}>
-              <button
-                type="button"
-                className={`folder-item ${state.selectedFolderId === f.id ? "active" : ""} ${f.isDefault ? "default" : ""}`}
-                onClick={() => selectFolder(f.id)}
-                onContextMenu={(e) => {
-                  if (f.isDefault) {
+          {state.folders.map((f) => {
+            const hasOverdue = overdueFolderIds.has(f.id);
+            return (
+              <li key={f.id}>
+                <button
+                  type="button"
+                  className={`folder-item ${state.selectedFolderId === f.id ? "active" : ""} ${f.isDefault ? "default" : ""}`}
+                  onClick={() => selectFolder(f.id)}
+                  onContextMenu={(e) => {
+                    if (f.isDefault) {
+                      e.preventDefault();
+                      return;
+                    }
                     e.preventDefault();
-                    return;
-                  }
-                  e.preventDefault();
-                  setTaskContextMenu(null);
-                  setFolderContextMenu({
-                    folder: f,
-                    x: e.clientX,
-                    y: e.clientY,
-                  });
-                }}
-              >
-                <span className="folder-item-title">{f.title}</span>
-              </button>
-            </li>
-          ))}
+                    setTaskContextMenu(null);
+                    setFolderContextMenu({
+                      folder: f,
+                      x: e.clientX,
+                      y: e.clientY,
+                    });
+                  }}
+                >
+                  <span className="folder-item-title">{f.title}</span>
+                  {hasOverdue ? (
+                    <span
+                      className="folder-dot"
+                      aria-label="Contains overdue tasks"
+                      title="Contains overdue tasks"
+                    />
+                  ) : null}
+                </button>
+              </li>
+            );
+          })}
         </ul>
         <button
           type="button"
@@ -261,6 +283,7 @@ export default function App() {
                     key={t.id}
                     task={t}
                     isInDefaultFolder={isDefault}
+                    isOverdue={isOverdue(t)}
                     onToggle={() => void toggleTask(t.id)}
                     onContextMenu={(e) => {
                       e.preventDefault();

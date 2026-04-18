@@ -160,7 +160,12 @@ export default function TaskForm({
                   id="task-due"
                   type="date"
                   value={dueDate ?? ""}
-                  onChange={(e) => setDueDate(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setDueDate(v);
+                    // Time can't exist without a date — clear it if date is removed.
+                    if (!v) setDueTime("");
+                  }}
                 />
               </div>
               <div className="field">
@@ -170,7 +175,12 @@ export default function TaskForm({
                   type="time"
                   value={dueTime ?? ""}
                   onChange={(e) => setDueTime(e.target.value)}
+                  disabled={!dueDate}
+                  title={!dueDate ? "Set a date first" : undefined}
                 />
+                {!dueDate ? (
+                  <p className="field-hint">Set a date to enable time.</p>
+                ) : null}
               </div>
             </>
           ) : (

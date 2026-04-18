@@ -5,6 +5,8 @@ interface Props {
   task: Task;
   /** Hide due-date line for tasks in the default "today" folder */
   isInDefaultFolder: boolean;
+  /** Show the dark-red "Overdue" pill */
+  isOverdue?: boolean;
   onToggle: () => void;
   onContextMenu: (e: MouseEvent<HTMLDivElement>) => void;
 }
@@ -28,6 +30,7 @@ function formatDue(d: string | null, t: string | null): string | null {
 export default function TaskRow({
   task,
   isInDefaultFolder,
+  isOverdue = false,
   onToggle,
   onContextMenu,
 }: Props) {
@@ -36,7 +39,7 @@ export default function TaskRow({
 
   return (
     <div
-      className={`task-row ${task.completed ? "done" : ""}`}
+      className={`task-row ${task.completed ? "done" : ""} ${isOverdue ? "overdue" : ""}`}
       onContextMenu={onContextMenu}
     >
       <input
@@ -49,6 +52,9 @@ export default function TaskRow({
       <div className="task-body">
         <div className="task-title-row">
           <span className="task-title">{task.title}</span>
+          {isOverdue ? (
+            <span className="priority-pill overdue">Overdue</span>
+          ) : null}
           {task.priority ? (
             <span className={`priority-pill ${task.priority}`}>
               {task.priority}
